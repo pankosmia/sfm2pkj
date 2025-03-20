@@ -1,122 +1,87 @@
 use std::collections::BTreeMap;
+use std::io::BufRead;
+use std::fs::File;
+use std::io;
 use regex::Regex;
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
-pub(crate) enum TokenType {
-    Attribute,
-    DefaultAttribute,
-    EmptyMilestone,
-    StartMilestoneTag,
-    EndMilestoneTag,
-    EndTag,
-    StartTag,
-    BareSlash,
-    Eol,
-    NoBreakSpace,
-    SoftLineBreak,
-    SpaceCharacters,
-    NonSpaceCharacters,
-    Main,
-}
+use crate::lexed::{Lexed, LexType};
 
 #[derive(Clone)]
 pub(crate) struct RegexRecord {
     pub(crate) re_string: String,
-    pub(crate) re: Regex
+    pub(crate) re: Regex,
 }
 
-pub(crate) fn lexing_regexes() -> BTreeMap<TokenType, RegexRecord> {
+fn insert_regex_record(regexes: &mut BTreeMap<LexType, RegexRecord>, tt: LexType, re_string: &str) -> () {
+    regexes.insert(
+        tt,
+        RegexRecord {
+            re_string: re_string.to_string(),
+            re: Regex::new(re_string).unwrap(),
+        },
+    );
+}
+
+pub(crate) fn lexing_regexes() -> (BTreeMap<LexType, RegexRecord>, Regex) {
     let mut regexes = BTreeMap::new();
-    regexes.insert(
-        TokenType::Attribute,
-        RegexRecord {
-            re_string: r#"([ \t]*\|?[ \t]*([A-Za-z0-9\-]+)="([^"]*)"[ \t]?)"#.to_string(),
-            re: Regex::new(r#"([ \t]*\|?[ \t]*([A-Za-z0-9\-]+)="([^"]*)"[ \t]?)"#).unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::DefaultAttribute,
-        RegexRecord {
-            re_string: r"([ \t]*\|[ \t]*([^|\\]*))".to_string(),
-            re: Regex::new(r"([ \t]*\|[ \t]*([^|\\]*))").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::EmptyMilestone,
-        RegexRecord {
-            re_string: r"(\\([a-z1-9]+)\\[*])".to_string(),
-            re: Regex::new(r"(\\([a-z1-9]+)\\[*])").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::StartMilestoneTag,
-        RegexRecord {
-            re_string: r"(\\([a-z1-9]+)-([se]))".to_string(),
-            re: Regex::new(r"(\\([a-z1-9]+)-([se]))").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::EndMilestoneTag,
-        RegexRecord {
-            re_string: r"(\\([*]))".to_string(),
-            re: Regex::new(r"(\\([*]))").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::EndTag,
-        RegexRecord {
-            re_string: r"(\\([+]?[a-z\-]+)([1-9]?(-([1-9]))?)[*])".to_string(),
-            re: Regex::new(r"(\\([+]?[a-z\-]+)([1-9]?(-([1-9]))?)[*])").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::StartTag,
-        RegexRecord {
-            re_string: r"(\\([+]?[a-z\-]+)([1-9]?(-([1-9]))?))".to_string(),
-            re: Regex::new(r"(\\([+]?[a-z\-]+)([1-9]?(-([1-9]))?)[ \t]?)").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::BareSlash,
-        RegexRecord {
-            re_string: r"(\\)".to_string(),
-            re: Regex::new(r"(\\)").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::Eol,
-        RegexRecord {
-            re_string: r"([ \t]*[\r\n]+[ \t]*)".to_string(),
-            re: Regex::new(r"([ \t]*[\r\n]+[ \t]*)").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::NoBreakSpace,
-        RegexRecord {
-            re_string: r"~".to_string(),
-            re: Regex::new(r"~").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::SpaceCharacters,
-        RegexRecord {
-            re_string: r"(\p{Zs}{1,1024})".to_string(),
-            re: Regex::new(r"(\p{Zs}{1,1024})").unwrap()
-        }
-    );
-    regexes.insert(
-        TokenType::NonSpaceCharacters,
-        RegexRecord {
-            re_string: r"([^\p{Zs}]{1,1024})".to_string(),
-            re: Regex::new(r"([^\p{Zs}]{1,1024})").unwrap()
-        }
-    );
+    for re_spec in vec![
+        (LexType::Attribute, r#"(\|?[ \t]*[A-Za-z0-9\-]+="[^"]*")"#),
+        (LexType::DefaultAttribute, r"(\|[ \t]*[^|\\]*)"),
+        (LexType::EndMilestoneTag, r"(\\[*])"),
+        (LexType::EndTag, r"(\\[+]?[a-z1-9\-]+[*])"),
+        (LexType::StartTag, r"(\\[+]?[a-z1-9\-]+)"),
+        (LexType::BareSlash, r"(\\)"),
+        (LexType::Eol, r"([ \t]*[\r\n]+[ \t]*)"),
+        (LexType::NoBreakSpace, r"~"),
+        (LexType::SpaceCharacters, r"(\p{Zs}{1,1024})"),
+        (LexType::NonSpaceCharacters, r"([^\p{Zs}]{1,1024})"),
+    ] {
+        insert_regex_record(
+            &mut regexes,
+            re_spec.0,
+            re_spec.1,
+        );
+    }
 
     let main_regex_str: String = regexes.iter()
         .map(|(_, v)| v.re_string.clone())
         .collect::<Vec<_>>()
         .join("|");
     let main_regex = Regex::new(&main_regex_str).unwrap();
-    regexes.insert(TokenType::Main, RegexRecord {re_string: main_regex_str, re: main_regex});
-    regexes
+    (regexes, main_regex)
+}
+
+pub fn lex_sfm(filename: &str) -> io::Result<Vec<Lexed>> {
+    let (lexing, main_regex) = lexing_regexes();
+    let file = File::open(filename)?;
+    let reader = io::BufReader::new(file);
+    let mut lexed: Vec<Lexed> = Vec::new();
+    for line in reader.lines() {
+        for general_match in main_regex.find_iter(line?.as_str()) {
+            for (tt, re_struct) in &lexing {
+                let tt2 = tt.clone();
+                if re_struct.re.is_match_at(general_match.as_str(), 0) {
+                    lexed.push(Lexed {lex_type: tt2, matched: general_match.as_str().to_string()});
+                    break;
+                }
+            }
+        }
+        lexed.push(Lexed {lex_type: LexType::Eol, matched: "\n".to_string()});
+    };
+    Ok(lexed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lexing_regexes() {
+        assert!(lexing_regexes().0.contains_key(&LexType::StartTag));
+    }
+    #[test]
+    fn test_lex_sfm() {
+        assert_eq!(lex_sfm("test_data/usfm/hello.usfm").unwrap()[0].lex_type, LexType::StartTag);
+        assert_eq!(lex_sfm("test_data/usfm/hello.usfm").unwrap()[0].matched, "\\id");
+    }
+
 }
