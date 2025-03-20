@@ -3,7 +3,7 @@ use std::io::BufRead;
 use std::fs::File;
 use std::io;
 use regex::Regex;
-use crate::lexed::{ParseToken, LexType};
+use crate::parse_token::{ParseToken, LexType};
 
 #[derive(Clone)]
 pub(crate) struct RegexRecord {
