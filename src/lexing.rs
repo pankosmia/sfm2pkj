@@ -3,7 +3,7 @@ use std::io::BufRead;
 use std::fs::File;
 use std::io;
 use regex::Regex;
-use crate::lexed::{Lexed, LexType};
+use crate::lexed::{ParseToken, LexType};
 
 #[derive(Clone)]
 pub(crate) struct RegexRecord {
@@ -32,6 +32,7 @@ pub(crate) fn lexing_regexes() -> (BTreeMap<LexType, RegexRecord>, Regex) {
         (LexType::BareSlash, r"(\\)"),
         (LexType::Eol, r"([ \t]*[\r\n]+[ \t]*)"),
         (LexType::NoBreakSpace, r"~"),
+        (LexType::SoftLineBreak, r"//"),
         (LexType::SpaceCharacters, r"(\p{Zs}{1,1024})"),
         (LexType::NonSpaceCharacters, r"([^\p{Zs}]{1,1024})"),
     ] {
@@ -50,22 +51,22 @@ pub(crate) fn lexing_regexes() -> (BTreeMap<LexType, RegexRecord>, Regex) {
     (regexes, main_regex)
 }
 
-pub fn lex_sfm(filename: &str) -> io::Result<Vec<Lexed>> {
+pub fn lex_sfm(filename: &str) -> io::Result<Vec<ParseToken>> {
     let (lexing, main_regex) = lexing_regexes();
     let file = File::open(filename)?;
     let reader = io::BufReader::new(file);
-    let mut lexed: Vec<Lexed> = Vec::new();
+    let mut lexed: Vec<ParseToken> = Vec::new();
     for line in reader.lines() {
         for general_match in main_regex.find_iter(line?.as_str()) {
             for (tt, re_struct) in &lexing {
                 let tt2 = tt.clone();
                 if re_struct.re.is_match_at(general_match.as_str(), 0) {
-                    lexed.push(Lexed {lex_type: tt2, matched: general_match.as_str().to_string()});
+                    lexed.push(ParseToken::Lexed {lex_type: tt2, matched: general_match.as_str().to_string()});
                     break;
                 }
             }
         }
-        lexed.push(Lexed {lex_type: LexType::Eol, matched: "\n".to_string()});
+        lexed.push(ParseToken::Lexed {lex_type: LexType::Eol, matched: "\n".to_string()});
     };
     Ok(lexed)
 }
@@ -80,8 +81,12 @@ mod tests {
     }
     #[test]
     fn test_lex_sfm() {
-        assert_eq!(lex_sfm("test_data/usfm/hello.usfm").unwrap()[0].lex_type, LexType::StartTag);
-        assert_eq!(lex_sfm("test_data/usfm/hello.usfm").unwrap()[0].matched, "\\id");
+        let first_lexed_token = &lex_sfm("test_data/usfm/hello.usfm").unwrap()[0];
+        let first_lexed_data = match first_lexed_token {
+            ParseToken::Lexed{lex_type, matched} => (lex_type, matched),
+        };
+        assert_eq!(*first_lexed_data.0, LexType::StartTag);
+        assert_eq!(first_lexed_data.1, "\\id");
     }
 
 }

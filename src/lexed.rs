@@ -1,6 +1,6 @@
 use std::fmt;
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
+use std::cmp::PartialEq;
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Copy)]
 pub enum LexType {
     Attribute,
     DefaultAttribute,
@@ -14,16 +14,34 @@ pub enum LexType {
     SpaceCharacters,
     NonSpaceCharacters,
 }
-pub struct Lexed {
-    pub lex_type: LexType,
-    pub matched: String,
+
+#[derive(Clone)]
+pub enum ParseToken {
+    Lexed {lex_type: LexType, matched: String},
 }
 
-impl fmt::Display for Lexed {
+impl fmt::Display for ParseToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[TokenType::{:?}: \"{}\"]", self.lex_type, self.matched)
+        match self {
+            ParseToken::Lexed{lex_type, matched} => write!(f, "[Lexed {:?}: \"{}\"]", lex_type, matched)
+        }
     }
 }
+
+impl PartialEq for ParseToken {
+    fn eq(&self, other: &Self) -> bool {
+            match self {
+                ParseToken::Lexed{lex_type, matched} => {
+                    let lt = lex_type;
+                    let m = matched;
+                    match other {
+                        ParseToken::Lexed{lex_type, matched} => m == matched && lt == lex_type,
+                    }
+                }
+            }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -31,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_lexed_display() {
-        assert!(format!("{}", Lexed {lex_type: LexType::NonSpaceCharacters, matched: "foo".to_string()}).len() > 0);
+        assert!(format!("{}", ParseToken::Lexed {lex_type: LexType::NonSpaceCharacters, matched: "foo".to_string()}).len() > 0);
     }
 
 }
