@@ -1,10 +1,20 @@
 mod lexing;
 mod parse_token;
-use crate::lexing::lex_sfm;
+mod milestones;
 
-pub fn show_lexed_sfm(filename: &str) -> () {
-    for lex in lex_sfm(filename).unwrap() {
+use crate::lexing::lex_sfm;
+use crate::milestones::handle_milestones;
+
+pub fn sfm2pkj(filename: &str) -> () {
+    let lexed = lex_sfm(filename).unwrap();
+    println!("\n* Lexed *");
+    for lex in &lexed {
         println!("{}", lex);
+    }
+    let milestoned = handle_milestones(&lexed);
+    println!("\n* Milestoned *");
+    for token in &milestoned {
+        println!("{}", token);
     }
 }
 
@@ -12,7 +22,7 @@ pub fn show_lexed_sfm(filename: &str) -> () {
 mod tests {
     use super::*;
     #[test]
-    fn test_show_lexed_sfm() {
+    fn test_sfm2pkj() {
         for data_name in vec![
             "hello",
             "soft_line_break",
@@ -21,7 +31,7 @@ mod tests {
             "standalone_milestone"
         ] {
             println!("\n*** {} ***\n", data_name.to_ascii_uppercase());
-            assert_eq!(show_lexed_sfm(format!("test_data/usfm/{}.usfm", data_name).as_str()), ());
+            assert_eq!(sfm2pkj(format!("test_data/usfm/{}.usfm", data_name).as_str()), ());
         }
     }
 

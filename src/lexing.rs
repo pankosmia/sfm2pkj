@@ -84,6 +84,7 @@ mod tests {
         let first_lexed_token = &lex_sfm("test_data/usfm/hello.usfm").unwrap()[0];
         let first_lexed_data = match first_lexed_token {
             ParseToken::Lexed{lex_type, matched} => (lex_type, matched),
+            _ => panic!("Unexpected token {}", first_lexed_token),
         };
         assert_eq!(*first_lexed_data.0, LexType::StartTag);
         assert_eq!(first_lexed_data.1, "\\id");
